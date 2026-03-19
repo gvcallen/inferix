@@ -150,10 +150,10 @@ def nested_sample(
     options: dict[str, Any] | None = None,
     *,
     log_prior_fn: Callable | None = None,        
+    prior_sample_fn: Callable[[PRNGKeyArray, PyTree], Y] | None = None,
     prior_transform_fn: Callable | None = None,  
     y_live: Y | None = None,
-    num_live_points: int | None = None,
-    prior_sample_fn: Callable[[PRNGKeyArray, PyTree], Y] | None = None,
+    nlive: int | None = None,
     ndims: int | None = None,                    
     logZ_convergence: float = 1e-3, 
     max_iters: int = 100000,        
@@ -189,10 +189,10 @@ def nested_sample(
             likelihood_func = lambda u, args: log_likelihood_fn(prior_transform_fn(u, args), args)
             
             if y_live is None:
-                if num_live_points is None or ndims is None:
-                    raise ValueError("To auto-initialize via prior_transform, provide `num_live_points` and `ndims`.")
+                if nlive is None or ndims is None:
+                    raise ValueError("To auto-initialize via prior_transform, provide `nlive` and `ndims`.")
                 init_key, key = jax.random.split(key)
-                y_live = jax.random.uniform(init_key, shape=(num_live_points, ndims))
+                y_live = jax.random.uniform(init_key, shape=(nlive, ndims))
                 
         elif log_prior_fn is not None:
             # Standard physical run
@@ -200,10 +200,10 @@ def nested_sample(
             likelihood_func = log_likelihood_fn
             
             if y_live is None:
-                if num_live_points is None or prior_sample_fn is None:
-                    raise ValueError("To auto-initialize a Physical NS, provide `num_live_points` and `prior_sample_fn`.")
+                if nlive is None or prior_sample_fn is None:
+                    raise ValueError("To auto-initialize a Physical NS, provide `nlive` and `prior_sample_fn`.")
                 init_key, key = jax.random.split(key)
-                keys = jax.random.split(init_key, num_live_points)
+                keys = jax.random.split(init_key, nlive)
                 y_live = jax.vmap(prior_sample_fn, in_axes=(0, None))(keys, args)
         else:
             raise ValueError("Physical samplers require either `log_prior_fn` or `prior_transform_fn`.")
@@ -216,10 +216,10 @@ def nested_sample(
         likelihood_func = log_likelihood_fn
         
         if y_live is None:
-            if num_live_points is None or ndims is None:
-                raise ValueError("To auto-initialize a Hypercube NS, provide `num_live_points` and `ndims`.")
+            if nlive is None or ndims is None:
+                raise ValueError("To auto-initialize a Hypercube NS, provide `nlive` and `ndims`.")
             init_key, key = jax.random.split(key)
-            y_live = jax.random.uniform(init_key, shape=(num_live_points, ndims))
+            y_live = jax.random.uniform(init_key, shape=(nlive, ndims))
             
     else:
         raise TypeError("Sampler must inherit from a valid AbstractNestedSampler trait.")

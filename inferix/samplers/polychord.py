@@ -2,6 +2,7 @@ from typing import Any, Callable, Dict, List, Optional
 
 import jax
 import jax.numpy as jnp
+import jax.tree_util as jtu
 import numpy as np
 from jaxtyping import PyTree
 
@@ -64,14 +65,14 @@ class PolyChord(AbstractHostHypercubeNS):
         except ImportError:
             raise ImportError("pypolychord must be installed to use this sampler.")
 
-        # 1. Resolve Dynamic Defaults
+        # Resolve Dynamic Defaults
         _nlive = self.nlive if self.nlive is not None else ndims * 25
         _num_repeats = self.num_repeats if self.num_repeats is not None else ndims * 5
         _grade_dims = self.grade_dims if self.grade_dims is not None else [ndims]
         _grade_frac = self.grade_frac if self.grade_frac is not None else [1.0] * len(_grade_dims)
         _nlives = self.nlives if self.nlives is not None else {}
 
-        # 2. Populate PolyChordSettings
+        # Populate PolyChordSettings
         settings = PolyChordSettings(nDims=ndims, nDerived=0)
         settings.nlive = _nlive
         settings.num_repeats = _num_repeats
@@ -104,19 +105,32 @@ class PolyChord(AbstractHostHypercubeNS):
         settings.nlives = _nlives
         settings.cube_samples = self.cube_samples
 
-        # 3. JIT Compile the Target Functions
-        jitted_likelihood = jax.jit(lambda theta: log_likelihood_fn(theta, args))
-        jitted_prior = jax.jit(lambda u: prior_transform_fn(u, args))
+        dummy_u = jnp.zeros(ndims) 
+        dummy_theta = prior_transform_fn(dummy_u, args)
+        flat_theta, treedef = jtu.tree_flatten(dummy_theta)
+        
+        @jax.jit
+        def jitted_likelihood(flat_theta_jax):
+            # Convert flat array back into the user's PyTree structure
+            struct_theta = jtu.tree_unflatten(treedef, flat_theta_jax)
+            return log_likelihood_fn(struct_theta, args)
 
-        # 4. Create Host-to-Device Callbacks
+        @jax.jit
+        def jitted_prior(u_jax):
+            # Prior transform usually outputs a PyTree, so we flatten it for PolyChord
+            struct_theta = prior_transform_fn(u_jax, args)
+            return jtu.tree_flatten(struct_theta)[0] # Return the flat list of leaves
+
+        # 3. CALLBACKS (Now operating on flat NumPy arrays)
         def polychord_likelihood(theta_np):
             logL = jitted_likelihood(jnp.asarray(theta_np))
             return float(logL), []
 
         def polychord_prior(u_np):
+            # PolyChord feeds in u (flat), expects theta (flat)
             return np.array(jitted_prior(jnp.asarray(u_np)))
 
-        # 5. Execute Run
+        # Execute Run
         output = pypolychord.run_polychord(
             loglikelihood=polychord_likelihood,
             nDims=ndims,
@@ -125,12 +139,18 @@ class PolyChord(AbstractHostHypercubeNS):
             prior=polychord_prior
         )
 
-        # 6. Package and Return
+        @jax.jit
+        def restructure_results(samples_array):
+            # Use vmap to unflatten every row of the samples matrix
+            unflatten_vmap = jax.vmap(lambda row: jtu.tree_unflatten(treedef, row))
+            return unflatten_vmap(samples_array)
+
+        structured_samples = restructure_results(jnp.array(output.samples))
+
         return Result(
-            samples=jnp.array(output.samples), 
+            samples=structured_samples, 
             logZ=jnp.array(output.logZ),
             logZ_err=jnp.array(output.logZerr),
-            num_steps=len(output.samples),
             converged=jnp.array(True),
             final_state=None
         )
