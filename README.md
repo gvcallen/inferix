@@ -41,8 +41,8 @@ sampler = inferix.NSS(num_delete=10, num_inner_steps=20)
 
 # 3. Execute the run
 key = jax.random.PRNGKey(42)
-solution = inferix.nested_sample(
-    log_likelihood_fn=my_circuit_likelihood,
+result = inferix.nested_sample(
+    log_likelihood_fn=my_likelihood,
     prior_transform_fn=my_prior_transform,
     sampler=sampler,
     ndims=5,
@@ -51,7 +51,6 @@ solution = inferix.nested_sample(
 )
 
 # 4. Access the results
-print(f"Final log-Evidence (logZ): {solution.logZ} ± {solution.logZ_err}")
-print(f"Total steps taken: {solution.num_steps}")
-physical_samples = solution.dead_points
+print(f"Final log-Evidence (logZ): {result.logZ} ± {result.logZ_err}")
+print(f"Num samples: {result.samples.shape[0]}")
 ```
