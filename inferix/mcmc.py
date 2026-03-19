@@ -4,8 +4,7 @@ from typing import Any, Generic
 
 import equinox as eqx
 import jax
-import jax.numpy as jnp
-from jaxtyping import Array, PRNGKeyArray, PyTree
+from jaxtyping import PRNGKeyArray, PyTree
 
 from inferix.custom_types import Y, Aux, SamplerState
 from inferix.result import Result

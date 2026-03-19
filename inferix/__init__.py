@@ -9,6 +9,9 @@ try:
 except PackageNotFoundError:
     pass
 
+# --- Core API ---
+from inferix.result import Result
+
 # --- MCMC API ---
 from inferix.mcmc import (
     AbstractMCMCSampler,
@@ -16,7 +19,7 @@ from inferix.mcmc import (
 )
 
 # --- Nested Sampling API ---
-from .nested import (
+from inferix.nested import (
     AbstractHostHypercubeNS,
     AbstractHostPhysicalNS,
     AbstractHypercubeNS,
@@ -26,28 +29,19 @@ from .nested import (
 )
 
 # --- Implementation ---
-from inferix.samplers.nss import NSS
-from inferix.samplers.polychord import PolyChord
-from inferix.samplers.nuts import NUTS
+from inferix.samplers import *
+from inferix import samplers
 
 __all__ = [
-    # Core Runners
-    "mcmc_sample",
-    "nested_sample",
-    
-    # Concrete Samplers
-    "NUTS",
-    "NSS",
-    "PolyChord",
-    
-    # Data Structures
     "Result",
-    
-    # Abstract Base Classes (Traits for users who want to write their own samplers)
     "AbstractMCMCSampler",
-    "AbstractNestedSampler",
-    "AbstractPhysicalNS",
-    "AbstractHypercubeNS",
+    "mcmc_sample",
     "AbstractHostHypercubeNS",
     "AbstractHostPhysicalNS",
+    "AbstractHypercubeNS",
+    "AbstractNestedSampler",
+    "AbstractPhysicalNS",
+    "nested_sample",
 ]
+
+__all__.extend(samplers.__all__)
