@@ -37,7 +37,7 @@ def my_prior_transform(u, args):
     return ...
 
 # 2. Instantiate your sampler of choice e.g. inferix.NUTS, inferix.NSS or inferix.PolyChord
-sampler = inferix.NSS(num_delete=10, num_inner_steps=20)
+sampler = inferix.NSS(num_delete=10, num_inner_steps=20, logZ_convergence=1e-3)
 
 # 3. Execute the run
 key = jax.random.PRNGKey(42)
@@ -45,9 +45,7 @@ result = inferix.nested_sample(
     log_likelihood_fn=my_likelihood,
     prior_transform_fn=my_prior_transform,
     sampler=sampler,
-    ndims=5,
     key=key,
-    logZ_convergence=1e-3,
 )
 
 # 4. Access the results
