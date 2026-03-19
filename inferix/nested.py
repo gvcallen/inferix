@@ -1,14 +1,15 @@
 import abc
-from typing import Any, Callable, Generic
+from typing import Any, Callable
 
 import equinox as eqx
 import jax
 import jax.numpy as jnp
 import jax.tree_util as jtu
-from jaxtyping import Array, Bool, PRNGKeyArray, PyTree, Scalar
+from jaxtyping import Array, PRNGKeyArray, PyTree, Scalar
 
 from inferix.custom_types import Y, Aux, SamplerState
 from inferix.result import Result
+from inferix.base import AbstractStepSampler
 
 class NSInfo(eqx.Module):
     """
@@ -19,11 +20,10 @@ class NSInfo(eqx.Module):
     loglikelihood: Array       # L(theta)
     loglikelihood_birth: Array
 
-class AbstractNestedSampler(eqx.Module, Generic[Y, SamplerState, Aux]):
+class AbstractNestedSampler(AbstractStepSampler):
     """
     Abstract base class for all Nested Sampling algorithms.
     """
-
     @abc.abstractmethod
     def init(
         self,

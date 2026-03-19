@@ -1,6 +1,6 @@
 import abc
 from collections.abc import Callable
-from typing import Any, Generic
+from typing import Any
 
 import equinox as eqx
 import jax
@@ -8,9 +8,9 @@ from jaxtyping import PRNGKeyArray, PyTree
 
 from inferix.custom_types import Y, Aux, SamplerState
 from inferix.result import Result
+from inferix.base import AbstractStepSampler
 
-
-class AbstractMCMCSampler(eqx.Module, Generic[Y, SamplerState, Aux]):
+class AbstractMCMCSampler(AbstractStepSampler):
     """
     Abstract base class for all MCMC transition kernels.
     
