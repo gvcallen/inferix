@@ -28,7 +28,7 @@ import jax.numpy as jnp
 import inferix
 
 # 1. Define your target functions (Pure JAX)
-def my_circuit_likelihood(theta, args):
+def my_likelihood(theta, args):
     # e.g., A complex differentiable physics simulation
     return ... 
 
