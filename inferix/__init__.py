@@ -10,7 +10,7 @@ except PackageNotFoundError:
     pass
 
 # --- Core API ---
-from inferix.result import Result
+from inferix.result import Result, RESULTS
 from inferix.base import AbstractSampler, AbstractIterativeSampler
 
 # --- MCMC API ---
@@ -37,6 +37,7 @@ __all__ = [
     "AbstractSampler",
     "AbstractIterativeSampler",
     "Result",
+    "RESULTS",
     "AbstractMCMCSampler",
     "mcmc_sample",
     "AbstractHostHypercubeNS",

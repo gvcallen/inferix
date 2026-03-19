@@ -7,7 +7,7 @@ import numpy as np
 from jaxtyping import PyTree
 
 from inferix.nested import AbstractHostHypercubeNS
-from inferix.result import Result
+from inferix.result import Result, RESULTS
 
 class PolyChord(AbstractHostHypercubeNS):
     """PolyChord Nested Sampling wrapper."""
@@ -43,15 +43,7 @@ class PolyChord(AbstractHostHypercubeNS):
     file_root: str = "test"
     seed: int = -1
 
-    def run(
-        self, 
-        log_likelihood_fn: Callable, 
-        prior_transform_fn: Callable, 
-        y0: PyTree,  
-        args: PyTree,
-        *,
-        nlive: int | None = None,
-    ) -> Result:
+    def __call__(self, log_likelihood_fn: Callable, prior_transform_fn: Callable, y0: PyTree, args: PyTree, *, nlive: int | None = None) -> Result:
         
         try:
             import pypolychord

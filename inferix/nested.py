@@ -9,7 +9,7 @@ from jaxtyping import Array, PRNGKeyArray, PyTree, Scalar
 
 from inferix.custom_types import Y, Aux, SamplerState
 from inferix.result import Result
-from inferix.base import AbstractIterativeSampler
+from inferix.base import AbstractIterativeSampler, AbstractHostSampler
 
 class NSInfo(eqx.Module):
     """
@@ -50,13 +50,6 @@ class AbstractNestedSampler(AbstractIterativeSampler):
         """Perform one Nested Sampling iteration."""
 
 
-class AbstractHostNestedSampler(eqx.Module):
-    """
-    Trait for Nested Samplers that control their own host-side execution loop.
-    """
-    pass
-
-
 class AbstractPhysicalNS(AbstractNestedSampler[Y, SamplerState, Aux]):
     """
     Trait for Nested Samplers operating in the target physical parameter space (e.g., BlackJAX NSS).
@@ -73,23 +66,23 @@ class AbstractHypercubeNS(AbstractNestedSampler[Y, SamplerState, Aux]):
     pass
 
 
-class AbstractHostHypercubeNS(AbstractHostNestedSampler):
+class AbstractHostHypercubeNS(AbstractHostSampler):
     """
     Trait for Nested Samplers that natively explore the unit hypercube 
     but control their own host-side execution loop (e.g., PolyChord C++ binary).
     """
     @abc.abstractmethod
-    def run(self, log_likelihood_fn: Callable, prior_transform_fn: Callable, y0: Y, args: PyTree) -> Result:
+    def __call__(self, log_likelihood_fn: Callable, prior_transform_fn: Callable, y0: Y, args: PyTree, **kwargs) -> Result:
         """Executes the host-driven algorithm and returns the standard solution."""
 
 
-class AbstractHostPhysicalNS(AbstractHostNestedSampler):
+class AbstractHostPhysicalNS(AbstractHostSampler):
     """
     Trait for Nested Samplers that operate in the physical space
     but control their own host-side execution loop.
     """
     @abc.abstractmethod
-    def run(self, log_likelihood_fn: Callable, log_prior_fn: Callable, y0: Y, args: PyTree) -> Result:
+    def __call__(self, log_likelihood_fn: Callable, log_prior_fn: Callable, y0: Y, args: PyTree, **kwargs) -> Result:
         """Executes the host-driven algorithm and returns the standard solution."""
 
 
@@ -222,12 +215,12 @@ def nested_sample(
     if isinstance(sampler, AbstractHostHypercubeNS):
         if prior_transform_fn is None:
             raise ValueError(f"{sampler.__class__.__name__} requires `prior_transform_fn`.")
-        return sampler.run(log_likelihood_fn, prior_transform_fn, y0, args, nlive=nlive)
+        return sampler(log_likelihood_fn, prior_transform_fn, y0, args, nlive=nlive)
 
     elif isinstance(sampler, AbstractHostPhysicalNS):
         if log_prior_fn is None:
             raise ValueError(f"{sampler.__class__.__name__} requires `log_prior_fn`.")
-        return sampler.run(log_likelihood_fn, log_prior_fn, y0, args, nlive=nlive)
+        return sampler(log_likelihood_fn, log_prior_fn, y0, args, nlive=nlive)
 
     # --- 2. INITIALIZE LIVE POINTS ---
     if y_live is None:
