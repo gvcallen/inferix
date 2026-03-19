@@ -7,8 +7,9 @@ authors = [
     { name = "Gary Allen", email = "gvcallen@gmail.com" }
 ]
 dependencies = [
-    "equinox",
     "jax",
+    "numpy",
+    "equinox",
     "jaxtyping",
     "blackjax",
 ]

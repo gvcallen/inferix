@@ -1,6 +1,5 @@
 from typing import Any, Callable, Dict, List, Optional
 
-import equinox as eqx
 import jax
 import jax.numpy as jnp
 import numpy as np

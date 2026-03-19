@@ -18,11 +18,9 @@ In the JAX ecosystem, you typically have to choose between two extremes for Baye
 - Wrappers around lower-level drivers (like BlackJAX or PolyChord), which force you to manually manage while-loops, PRNG keys, buffers, and algorithmic states.
 - High-level Probabilistic Programming Languages (PPLs) (like NumPyro or PyMC), which are user-friendly but force you to rewrite your models using their specific domain-specific languages and distribution primitives.
 
-The goal of `Inferix` is to be a middle option that mirrors the API of [Optimistix](https://github.com/patrick-kidger/optimistix). It is designed for engineers and scientists who already have a forward model written in pure JAX, and just want to sample from it without managing boilerplate or adopting a heavy PPL framework.
+The goal of `Inferix` is to be a middle option that mirrors the API of [Optimistix](https://github.com/patrick-kidger/optimistix). It is designed for engineers and scientists who already have a forward model written in pure JAX, and just want to sample from it without managing boilerplate or adopting a heavy PPL framework. Inferix wraps low-level algorithms in a unified interface (`inferix.mcmc_sample` or `inferix.nested_sample`) and handles any host-bridge, XLA-compiled control flow, reparameterizations and data packaging. Current kernels include JAX-native NUTS and Nested Slice Sampling (via `BlackJAX`), and a host-bridged `PolyChord`.
 
-Inferix wraps low-level algorithms in declarative Equinox modules and handles all the XLA-compiled control flow, hypercube reparameterizations, and data packaging under the hood.The library is built around a unified API structure: you instantiate an algorithm (for example `inferix.MCMC`) with your desired hyperparameters, and pass it to a unified runner (`inferix.mcmc_sample` or `inferix.nested_sample`). Inferix currently supports both MCMC and Nested Sampling paradigms, with a native bridge to Blackjax (for NSS and NUTS) and and `PolyChord`.
-
-``python
+```python
 import jax
 import jax.numpy as jnp
 import inferix
@@ -54,4 +52,4 @@ solution = inferix.nested_sample(
 print(f"Final log-Evidence (logZ): {solution.logZ} ± {solution.logZ_err}")
 print(f"Total steps taken: {solution.num_steps}")
 physical_samples = solution.dead_points
-``
+```
