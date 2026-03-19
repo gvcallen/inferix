@@ -2,30 +2,22 @@ from typing import Any, Callable, Dict, List, Optional
 
 import jax
 import jax.numpy as jnp
-import jax.tree_util as jtu
+import jax.flatten_util  # <-- Added this critical import
 import numpy as np
 from jaxtyping import PyTree
 
-from inferix.nested import AbstractHostHypercubeNS, Result
+from inferix.nested import AbstractHostHypercubeNS
+from inferix.result import Result
 
 class PolyChord(AbstractHostHypercubeNS):
-    """
-    PolyChord Nested Sampling wrapper.
+    """PolyChord Nested Sampling wrapper."""
     
-    Exposes all native PolyChord settings. Attributes set to `None` 
-    will automatically fall back to PolyChord's dimension-dependent defaults
-    (e.g., nlive defaults to ndims * 25).
-    """
-    
-    # --- Dynamic / Dimension-Dependent Defaults ---
-    nlive: Optional[int] = None
     num_repeats: Optional[int] = None
     grade_dims: Optional[List[int]] = None
     grade_frac: Optional[List[float]] = None
     nlives: Optional[Dict[float, int]] = None
-    cube_samples: Optional[Any] = None  # Expected array-like
+    cube_samples: Optional[Any] = None  
     
-    # --- Static Defaults ---
     nprior: int = -1
     nfail: int = -1
     do_clustering: bool = True
@@ -55,9 +47,11 @@ class PolyChord(AbstractHostHypercubeNS):
         self, 
         log_likelihood_fn: Callable, 
         prior_transform_fn: Callable, 
-        ndims: int, 
-        args: PyTree
-    ) -> Result: # type: ignore
+        y0: PyTree,  
+        args: PyTree,
+        *,
+        nlive: int | None = None,
+    ) -> Result:
         
         try:
             import pypolychord
@@ -65,14 +59,16 @@ class PolyChord(AbstractHostHypercubeNS):
         except ImportError:
             raise ImportError("pypolychord must be installed to use this sampler.")
 
-        # Resolve Dynamic Defaults
-        _nlive = self.nlive if self.nlive is not None else ndims * 25
+        # 1. DERIVE GEOMETRY FROM y0
+        flat_y0, reconstruct_fn = jax.flatten_util.ravel_pytree(y0)
+        ndims = flat_y0.size
+
+        _nlive = nlive if nlive is not None else ndims * 25
         _num_repeats = self.num_repeats if self.num_repeats is not None else ndims * 5
         _grade_dims = self.grade_dims if self.grade_dims is not None else [ndims]
         _grade_frac = self.grade_frac if self.grade_frac is not None else [1.0] * len(_grade_dims)
         _nlives = self.nlives if self.nlives is not None else {}
 
-        # Populate PolyChordSettings
         settings = PolyChordSettings(nDims=ndims, nDerived=0)
         settings.nlive = _nlive
         settings.num_repeats = _num_repeats
@@ -105,32 +101,27 @@ class PolyChord(AbstractHostHypercubeNS):
         settings.nlives = _nlives
         settings.cube_samples = self.cube_samples
 
-        dummy_u = jnp.zeros(ndims) 
-        dummy_theta = prior_transform_fn(dummy_u, args)
-        flat_theta, treedef = jtu.tree_flatten(dummy_theta)
-        
+        # 2. JIT-COMPILED BRIDGES
         @jax.jit
         def jitted_likelihood(flat_theta_jax):
-            # Convert flat array back into the user's PyTree structure
-            struct_theta = jtu.tree_unflatten(treedef, flat_theta_jax)
+            struct_theta = reconstruct_fn(flat_theta_jax)
             return log_likelihood_fn(struct_theta, args)
 
         @jax.jit
-        def jitted_prior(u_jax):
-            # Prior transform usually outputs a PyTree, so we flatten it for PolyChord
-            struct_theta = prior_transform_fn(u_jax, args)
-            return jtu.tree_flatten(struct_theta)[0] # Return the flat list of leaves
+        def jitted_prior(flat_u_jax):
+            struct_u = reconstruct_fn(flat_u_jax)
+            struct_theta = prior_transform_fn(struct_u, args)
+            flat_theta, _ = jax.flatten_util.ravel_pytree(struct_theta)
+            return flat_theta
 
-        # 3. CALLBACKS (Now operating on flat NumPy arrays)
         def polychord_likelihood(theta_np):
             logL = jitted_likelihood(jnp.asarray(theta_np))
             return float(logL), []
 
         def polychord_prior(u_np):
-            # PolyChord feeds in u (flat), expects theta (flat)
             return np.array(jitted_prior(jnp.asarray(u_np)))
 
-        # Execute Run
+        # 3. EXECUTE POLYCHORD
         output = pypolychord.run_polychord(
             loglikelihood=polychord_likelihood,
             nDims=ndims,
@@ -139,18 +130,15 @@ class PolyChord(AbstractHostHypercubeNS):
             prior=polychord_prior
         )
 
-        @jax.jit
-        def restructure_results(samples_array):
-            # Use vmap to unflatten every row of the samples matrix
-            unflatten_vmap = jax.vmap(lambda row: jtu.tree_unflatten(treedef, row))
-            return unflatten_vmap(samples_array)
-
-        structured_samples = restructure_results(jnp.array(output.samples))
+        # 4. RESTRUCTURE RESULTS -> Returns a Batch of Caller PyTrees!
+        structured_samples = jax.vmap(reconstruct_fn)(jnp.array(output.samples))
 
         return Result(
             samples=structured_samples, 
+            final_state=None,
             logZ=jnp.array(output.logZ),
             logZ_err=jnp.array(output.logZerr),
             converged=jnp.array(True),
-            final_state=None
+            result=RESULTS.successful,
+            stats={"num_steps": len(output.samples)}
         )

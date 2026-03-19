@@ -7,10 +7,10 @@ import jax
 from jaxtyping import PRNGKeyArray, PyTree
 
 from inferix.custom_types import Y, Aux, SamplerState
-from inferix.result import Result
-from inferix.base import AbstractStepSampler
+from inferix.result import Result, RESULTS
+from inferix.base import AbstractSampler
 
-class AbstractMCMCSampler(AbstractStepSampler):
+class AbstractMCMCSampler(AbstractSampler[Y, Aux, SamplerState]):
     """
     Abstract base class for all MCMC transition kernels.
     
@@ -27,20 +27,7 @@ class AbstractMCMCSampler(AbstractStepSampler):
         key: PRNGKeyArray,
         options: dict[str, Any],
     ) -> SamplerState:
-        """
-        Initialize the sampler's internal state.
-
-        Arguments:
-        - `log_prob_fn`: Callable taking `(y, args)` and returning a scalar log-probability.
-        - `y`: The initial parameter guess (PyTree).
-        - `args`: Arguments passed to `log_prob_fn(y, args)`.
-        - `key`: A JAX PRNGKey for stochastic initialization.
-        - `options`: Sampler-specific runtime configuration.
-
-        Returns:
-        - A PyTree representing the initial algorithmic state (e.g., identity mass matrix, 
-          initial momentum, or step size).
-        """
+        """Initialize the sampler's internal state."""
 
     @abc.abstractmethod
     def step(
@@ -52,24 +39,7 @@ class AbstractMCMCSampler(AbstractStepSampler):
         options: dict[str, Any],
         state: SamplerState,
     ) -> tuple[Y, SamplerState, Aux]:
-        """
-        Perform one Markov transition.
-
-        Arguments:
-        - `log_prob_fn`: The target log-probability function.
-        - `y`: The current parameter state in the Markov chain.
-        - `args`: Arguments passed to `log_prob_fn(y, args)`.
-        - `key`: A JAX PRNGKey for the stochastic proposal and acceptance step.
-        - `options`: Sampler-specific runtime configuration.
-        - `state`: The current algorithmic state.
-
-        Returns:
-        - A 3-tuple containing:
-          1. `new_y`: The next parameter state (may be identical to `y` if rejected).
-          2. `new_state`: The updated sampler state.
-          3. `aux`: Auxiliary data from the transition (e.g., acceptance probability, 
-             number of leapfrog steps taken, or energy error).
-        """
+        """Perform one Markov transition."""
 
 
 @eqx.filter_jit
@@ -132,4 +102,6 @@ def mcmc_sample(
         samples=samples,
         aux=auxes,
         final_state=final_state,
+        result=RESULTS.successful,
+        stats={"num_steps": num_samples, "num_burnin": num_burnin}
     )

@@ -21,7 +21,7 @@ class NUTS(AbstractMCMCSampler[Y, SamplerState, Aux]):
     step_size: float
     inverse_mass_matrix: Optional[PyTree] = None
     max_num_doublings: int = 10
-    divergence_threshold: int = 1000,
+    divergence_threshold: int = 1000
     
     def _build_kernel(self, log_prob_fn: Callable, args: PyTree, y: Y):
         """

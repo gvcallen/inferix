@@ -11,7 +11,7 @@ except PackageNotFoundError:
 
 # --- Core API ---
 from inferix.result import Result
-from inferix.base import AbstractStepSampler
+from inferix.base import AbstractSampler, AbstractIterativeSampler
 
 # --- MCMC API ---
 from inferix.mcmc import (
@@ -34,7 +34,8 @@ from inferix.samplers import *
 from inferix import samplers
 
 __all__ = [
-    "AbstractStepSampler",
+    "AbstractSampler",
+    "AbstractIterativeSampler",
     "Result",
     "AbstractMCMCSampler",
     "mcmc_sample",

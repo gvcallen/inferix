@@ -2,11 +2,13 @@ from collections.abc import Callable
 from typing import Any
 
 import blackjax
-from jaxtyping import PRNGKeyArray, PyTree
+from jaxtyping import PRNGKeyArray, PyTree, Bool, Array
 
 from inferix.custom_types import Aux, SamplerState, Y
 from inferix.nested import AbstractPhysicalNS, NSInfo
+from inferix.result import RESULTS
 
+from optimistix import minimise
 
 class NSS(AbstractPhysicalNS[Y, SamplerState, NSInfo]): # <-- Note the explicit NSInfo type hint here
     """
@@ -15,6 +17,7 @@ class NSS(AbstractPhysicalNS[Y, SamplerState, NSInfo]): # <-- Note the explicit 
     
     num_delete: int
     num_inner_steps: int
+    logZ_convergence: float = 1e-3
     
     def _build_kernel(self, likelihood_fn: Callable, prior_fn: Callable, args: PyTree):
         def logprior(y): return prior_fn(y, args)
@@ -56,3 +59,12 @@ class NSS(AbstractPhysicalNS[Y, SamplerState, NSInfo]): # <-- Note the explicit 
         )
         
         return new_state.particles, new_state, standardized_aux
+    
+    def terminate(
+        self, 
+        state: SamplerState, 
+        **kwargs
+    ) -> tuple[Bool[Array, ""], RESULTS]:
+        """Determine whether the evidence integral has converged."""
+        converged = state.logZ_live - state.logZ < self.logZ_convergence
+        return converged, RESULTS.successful

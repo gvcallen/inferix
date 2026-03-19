@@ -3,17 +3,25 @@ from typing import Generic
 
 import equinox as eqx
 
-from inferix.custom_types import Y, Aux, SamplerState
-
-class AbstractStepSampler(eqx.Module, Generic[Y, SamplerState, Aux]):
-    """
-    Abstract base class for all Nested Sampling algorithms.
-    """
+from jaxtyping import Bool, Array
+from inferix.custom_types import Out, Y, Aux, SamplerState
+from inferix.result import RESULTS
+        
+class AbstractSampler(eqx.Module, Generic[Y, Out, Aux, SamplerState]):
+    """Abstract base class for all samplers."""
 
     @abc.abstractmethod
     def init(self, *args, **kwargs) -> SamplerState:
-        """Initialize the sampler's internal state."""
+        """Perform all initial computation needed to initialise the sampler state."""
 
     @abc.abstractmethod
-    def step(self, *args, **kwargs) -> tuple[Y, SamplerState, Aux]:
-        """Perform one Nested sampling step."""
+    def step(self,) -> tuple[Y, SamplerState, Aux]:
+        """Perform one step of the sampling."""
+
+
+class AbstractIterativeSampler(AbstractSampler):
+    """Abstract base class for all iterative solvers."""
+
+    @abc.abstractmethod
+    def terminate(self, *args, **kwargs) -> tuple[Bool[Array, ""], RESULTS]:
+        """Determine whether or not to stop the iterative sampling."""
