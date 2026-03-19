@@ -98,10 +98,14 @@ def _uniform_log_prior(u: PyTree, args: PyTree) -> Scalar:
     in_bounds = jnp.all(jnp.array([jnp.all((x >= 0.0) & (x <= 1.0)) for x in leaves]))
     return jnp.where(in_bounds, 0.0, -jnp.inf)
 
-@eqx.filter_jit
-def _device_loop(
-    likelihood_func, prior_func, sampler, y_live, args, key, options, max_iters
+
+def _batched_loop(
+    likelihood_func, prior_func, sampler, y_live, args, key, options, max_steps, batch_size
 ):
+    """
+    Executes inference in chunks of `batch_size`.
+    Provides XLA compilation speed while allowing infinite tracking and host-side control.
+    """
     init_state = sampler.init(likelihood_func, prior_func, y_live, args, key, options)
     
     dummy_key, _ = jax.random.split(key)
@@ -109,38 +113,93 @@ def _device_loop(
         sampler.step, likelihood_func, prior_func, y_live, args, dummy_key, options, init_state
     )
 
-    buffer_init = jtu.tree_map(lambda x: jnp.zeros((max_iters, *x.shape), dtype=x.dtype), dummy_aux)
-    init_carry = (jnp.array(0), init_state, y_live, key, buffer_init)
-
-    def cond_fun(carry):
-        step_idx, state, _, _, _ = carry
-        converged, _ = sampler.terminate(state=state)
-        under_max_steps = step_idx < max_iters
-        return jnp.logical_not(converged) & under_max_steps
-
-    def body_fun(carry):
-        step_idx, state, current_y_live, current_key, buffer = carry
-        step_key, next_key = jax.random.split(current_key)
+    # 1. JIT compile the core mathematical batch
+    # We declare static_batch_size so XLA knows exactly how much memory to pre-allocate.
+    @eqx.filter_jit(static_argnames=("static_batch_size",))
+    def execute_batch(current_y_live, current_key, state, static_batch_size, dynamic_max_steps):
         
-        new_y_live, new_state, dead_info = sampler.step(
-            likelihood_func, prior_func, current_y_live, args, step_key, options, state
-        )
-        
-        new_buffer = jtu.tree_map(lambda b, d: b.at[step_idx].set(d), buffer, dead_info)
-        return step_idx + 1, new_state, new_y_live, next_key, new_buffer
+        buffer_init = jtu.tree_map(lambda x: jnp.zeros((static_batch_size, *x.shape), dtype=x.dtype), dummy_aux)
+        init_carry = (jnp.array(0), state, current_y_live, current_key, buffer_init)
 
-    final_carry = jax.lax.while_loop(cond_fun, body_fun, init_carry)
-    final_steps, final_state, _, _, final_buffer = final_carry
+        def cond_fun(carry):
+            step_idx, s, _, _, _ = carry
+            converged, _ = sampler.terminate(state=s)
+            # Stop if converged OR if we hit the requested step limit for this batch
+            return jnp.logical_not(converged) & (step_idx < dynamic_max_steps)
+
+        def body_fun(carry):
+            step_idx, s, y, k, buffer = carry
+            step_k, next_k = jax.random.split(k)
+            
+            new_y, new_s, dead_info = sampler.step(
+                likelihood_func, prior_func, y, args, step_k, options, s
+            )
+            
+            new_buffer = jtu.tree_map(lambda b, d: b.at[step_idx].set(d), buffer, dead_info)
+            return step_idx + 1, new_s, new_y, next_k, new_buffer
+
+        final_carry = jax.lax.while_loop(cond_fun, body_fun, init_carry)
+        steps_taken, final_state, final_y, final_key, final_buffer = final_carry
+        
+        final_converged, final_status = sampler.terminate(state=final_state)
+
+        return final_y, final_key, final_state, final_buffer, steps_taken, final_converged, final_status
+
+    # 2. Host CPU Controller Loop
+    current_y_live = y_live
+    current_key = key
+    current_state = init_state
     
-    final_converged, final_status = sampler.terminate(state=final_state)
+    buffer_list = []
+    total_steps = 0
+    
+    while True:
+        # Determine how many steps to take in the current batch
+        if max_steps is None:
+            steps_this_batch = batch_size
+        else:
+            steps_this_batch = min(batch_size, max_steps - total_steps)
+            
+        if steps_this_batch <= 0:
+            # Reached max steps
+            converged, status = sampler.terminate(state=current_state)
+            break
 
-    return final_buffer, final_state, final_steps, final_converged, final_status
+        # Execute on GPU/TPU
+        current_y_live, current_key, current_state, batch_buffer, steps_taken, converged, status = execute_batch(
+            current_y_live, current_key, current_state, 
+            static_batch_size=batch_size, 
+            dynamic_max_steps=steps_this_batch
+        )
+
+        # Cast JAX tracers back to Python ints/bools for host control flow
+        steps_taken_int = int(steps_taken)
+        total_steps += steps_taken_int
+        
+        # Slice off any trailing zeros if the sampler converged early within the batch
+        if steps_taken_int > 0:
+            valid_batch_buffer = jtu.tree_map(lambda x: x[:steps_taken_int], batch_buffer)
+            buffer_list.append(valid_batch_buffer)
+            
+        if bool(converged):
+            break
+
+    # 3. Stack all batches back into a single PyTree
+    if len(buffer_list) > 0:
+        # jnp.concatenate is used because each item is already an array of shape (steps_taken, ...)
+        final_buffer = jtu.tree_map(lambda *leaves: jnp.concatenate(leaves, axis=0), *buffer_list)
+    else:
+        # Edge case: 0 steps were taken
+        final_buffer = jtu.tree_map(lambda x: jnp.zeros((0, *x.shape), dtype=x.dtype), dummy_aux)
+
+    return final_buffer, current_state, total_steps, converged, status
+
 
 def nested_sample(
     log_likelihood_fn: Callable,
     key: PRNGKeyArray,
     args: PyTree = None,
-    sampler: AbstractNestedSampler | None = None,
+    sampler: eqx.Module | None = None,
     options: dict[str, Any] | None = None,
     *,
     y0: Y | None = None,  
@@ -149,7 +208,8 @@ def nested_sample(
     prior_transform_fn: Callable | None = None,  
     prior_sample_fn: Callable | None = None,
     nlive: int | None = None,
-    max_steps: int = 100000,        
+    max_steps: int | None = None,
+    batch_size: int = 2000,
 ) -> Result:
     
     if sampler is None:
@@ -176,12 +236,10 @@ def nested_sample(
         
         init_key, key = jax.random.split(key)
         
-        # [FIXED BUG]: Robust uncorrelated generation using flatten_util
         flat_y0, reconstruct_fn = jax.flatten_util.ravel_pytree(y0)
         ndims = flat_y0.size
         u_live_flat = jax.random.uniform(init_key, shape=(nlive, ndims))
         
-        # This vmap automatically outputs a properly batched PyTree of [0, 1] coordinates
         u_live = jax.vmap(reconstruct_fn)(u_live_flat)
 
     is_hypercube_run = False
@@ -221,12 +279,12 @@ def nested_sample(
     else:
         raise TypeError("Sampler must inherit from a valid AbstractNestedSampler trait.")
 
-    # --- 4. EXECUTE JAX LOOP ---
-    final_buffer, final_state, final_steps, converged, status = _device_loop(
-        likelihood_func, prior_func, sampler, y_live, args, key, options, max_steps
+    # --- 4. EXECUTE BATCHED LOOP ---
+    final_buffer, final_state, final_steps, converged, status = _batched_loop(
+        likelihood_func, prior_func, sampler, y_live, args, key, options, max_steps, batch_size
     )
 
-    # --- 5. POST-PROCESSING -> Creates a Batch of Caller PyTrees! ---
+    # --- 5. POST-PROCESSING ---
     if is_hypercube_run and prior_transform_fn is not None:
         
         @jax.jit
