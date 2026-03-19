@@ -36,7 +36,7 @@ def my_prior_transform(u, args):
     # A mapping from the uniform unit hypercube coordinates u to physical parameters theta
     return ...
 
-# 2. Instantiate your sampler of choice e.g. inferix.NSS or inferix.PolyChord
+# 2. Instantiate your sampler of choice e.g. inferix.NUTS, inferix.NSS or inferix.PolyChord
 sampler = inferix.NSS(num_delete=10, num_inner_steps=20)
 
 # 3. Execute the run
