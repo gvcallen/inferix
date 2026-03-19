@@ -6,7 +6,7 @@ import jax.numpy as jnp
 import numpy as np
 from jaxtyping import PyTree
 
-from inferix.nested import AbstractHostHypercubeNS, NSSolution
+from inferix.nested import AbstractHostHypercubeNS, Result
 
 class PolyChord(AbstractHostHypercubeNS):
     """
@@ -57,7 +57,7 @@ class PolyChord(AbstractHostHypercubeNS):
         prior_transform_fn: Callable, 
         ndims: int, 
         args: PyTree
-    ) -> NSSolution: # type: ignore
+    ) -> Result: # type: ignore
         
         try:
             import pypolychord
@@ -127,8 +127,8 @@ class PolyChord(AbstractHostHypercubeNS):
         )
 
         # 6. Package and Return
-        return NSSolution(
-            dead_points=jnp.array(output.samples), 
+        return Result(
+            samples=jnp.array(output.samples), 
             logZ=jnp.array(output.logZ),
             logZ_err=jnp.array(output.logZerr),
             num_steps=len(output.samples),

@@ -8,16 +8,7 @@ import jax.tree_util as jtu
 from jaxtyping import Array, Bool, PRNGKeyArray, PyTree, Scalar
 
 from inferix.custom_types import Y, Aux, SamplerState
-
-class NSSolution(eqx.Module):
-    """The result of a Nested Sampling run."""
-    
-    dead_points: PyTree[Array]      # The stacked trajectory of dead points
-    logZ: Scalar                    # The final log-evidence estimate
-    logZ_err: Scalar                # The estimated error on logZ
-    num_steps: int                  # How many iterations were actually run
-    converged: Bool[Array, ""]      # Whether it hit logZ_convergence before max_iters
-    final_state: PyTree             # The final sampler state (useful for debugging)
+from inferix.result import Result
 
 class NSInfo(eqx.Module):
     """
@@ -88,7 +79,7 @@ class AbstractHostHypercubeNS(AbstractHostNestedSampler):
     but control their own host-side execution loop (e.g., PolyChord C++ binary).
     """
     @abc.abstractmethod
-    def run(self, log_likelihood_fn: Callable, prior_transform_fn: Callable, ndims: int, args: PyTree) -> NSSolution:
+    def run(self, log_likelihood_fn: Callable, prior_transform_fn: Callable, ndims: int, args: PyTree) -> Result:
         """Executes the host-driven algorithm and returns the standard solution."""
 
 
@@ -98,7 +89,7 @@ class AbstractHostPhysicalNS(AbstractHostNestedSampler):
     but control their own host-side execution loop.
     """
     @abc.abstractmethod
-    def run(self, log_likelihood_fn: Callable, log_prior_fn: Callable, ndims: int, args: PyTree) -> NSSolution:
+    def run(self, log_likelihood_fn: Callable, log_prior_fn: Callable, ndims: int, args: PyTree) -> Result:
         """Executes the host-driven algorithm and returns the standard solution."""
 
 
@@ -166,7 +157,7 @@ def nested_sample(
     ndims: int | None = None,                    
     logZ_convergence: float = 1e-3, 
     max_iters: int = 100000,        
-) -> NSSolution: # type: ignore
+) -> Result: # type: ignore
     """
     Execute a Nested Sampling run. Unifies JAX-native and Host-native algorithms.
     """
@@ -260,11 +251,10 @@ def nested_sample(
         # Apply the transformation to the final accumulated buffer
         final_buffer = _transform_buffer(final_buffer, args)
 
-    return NSSolution(
-        dead_points=final_buffer, 
+    return Result(
+        samples=final_buffer, 
         logZ=final_state.logZ,
         logZ_err=final_state.logZ_err if hasattr(final_state, 'logZ_err') else jnp.nan,
-        num_steps=final_steps,
         converged=converged,
         final_state=final_state
     )

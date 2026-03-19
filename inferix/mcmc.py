@@ -6,17 +6,9 @@ import equinox as eqx
 import jax
 import jax.numpy as jnp
 from jaxtyping import Array, PRNGKeyArray, PyTree
+
 from inferix.custom_types import Y, Aux, SamplerState
-
-
-class MCMCSolution(eqx.Module):
-    """The result of an MCMC sampling run."""
-    
-    samples: PyTree[Array]          # The stacked trajectory of accepted posterior samples
-    aux: PyTree[Array]              # Stacked auxiliary data (e.g., acceptance probabilities)
-    final_state: SamplerState       # The final algorithmic state (useful for resuming chains)
-    num_samples: int                # Number of samples collected
-    num_burnin: int                 # Number of warmup steps discarded
+from inferix.result import Result
 
 
 class AbstractMCMCSampler(eqx.Module, Generic[Y, SamplerState, Aux]):
@@ -92,7 +84,7 @@ def mcmc_sample(
     *,
     num_samples: int = 1000,
     num_burnin: int = 500,
-) -> MCMCSolution:
+) -> Result:
     """
     Execute an MCMC run, separating the burn-in and sampling phases for memory efficiency.
     """
@@ -137,10 +129,8 @@ def mcmc_sample(
     
     _, final_state, _ = final_carry
 
-    return MCMCSolution(
+    return Result(
         samples=samples,
         aux=auxes,
         final_state=final_state,
-        num_samples=num_samples,
-        num_burnin=num_burnin
     )
