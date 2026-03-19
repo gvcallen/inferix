@@ -1,6 +1,6 @@
 [project]
 name = "inferix"
-version = "0.1.2"
+version = "0.1.3"
 description = "A unified interface for probabilistic inference in JAX + Equinox"
 readme = "README.md"
 authors = [
@@ -24,7 +24,7 @@ docs = [
 ]
 
 [project.urls]
-homepage = "https://github.com/gvcallen/parax"
+homepage = "https://github.com/gvcallen/inferix"
 
 [build-system]
 requires = [
@@ -35,4 +35,4 @@ requires = [
 build-backend = 'setuptools.build_meta'
 
 [tool.setuptools.packages.find]
-include = ["parax"]
+include = ["inferix"]
