@@ -9,8 +9,7 @@ from jaxtyping import Array, Bool, PRNGKeyArray, PyTree, Scalar
 
 from inferix.custom_types import Y, Aux, SamplerState
 
-
-class NestedSolution(eqx.Module):
+class NSSolution(eqx.Module):
     """The result of a Nested Sampling run."""
     
     dead_points: PyTree[Array]      # The stacked trajectory of dead points
@@ -20,6 +19,14 @@ class NestedSolution(eqx.Module):
     converged: Bool[Array, ""]      # Whether it hit logZ_convergence before max_iters
     final_state: PyTree             # The final sampler state (useful for debugging)
 
+class NSInfo(eqx.Module):
+    """
+    Standardized Auxiliary output for a single Nested Sampling step.
+    This guarantees the runner always knows where the physical parameters are.
+    """
+    particles: PyTree[Array]   # The parameter coordinates (theta or u)
+    loglikelihood: Array       # L(theta)
+    loglikelihood_birth: Array
 
 class AbstractNestedSampler(eqx.Module, Generic[Y, SamplerState, Aux]):
     """
@@ -81,17 +88,17 @@ class AbstractHostHypercubeNS(AbstractHostNestedSampler):
     but control their own host-side execution loop (e.g., PolyChord C++ binary).
     """
     @abc.abstractmethod
-    def run(self, log_likelihood_fn: Callable, prior_transform_fn: Callable, ndims: int, args: PyTree) -> NestedSolution:
+    def run(self, log_likelihood_fn: Callable, prior_transform_fn: Callable, ndims: int, args: PyTree) -> NSSolution:
         """Executes the host-driven algorithm and returns the standard solution."""
 
 
 class AbstractHostPhysicalNS(AbstractHostNestedSampler):
     """
     Trait for Nested Samplers that operate in the physical space
-    but control their own host-side execution loop (e.g., PolyChord C++ binary).
+    but control their own host-side execution loop.
     """
     @abc.abstractmethod
-    def run(self, log_likelihood_fn: Callable, log_prior_fn: Callable, ndims: int, args: PyTree) -> NestedSolution:
+    def run(self, log_likelihood_fn: Callable, log_prior_fn: Callable, ndims: int, args: PyTree) -> NSSolution:
         """Executes the host-driven algorithm and returns the standard solution."""
 
 
@@ -159,7 +166,7 @@ def nested_sample(
     ndims: int | None = None,                    
     logZ_convergence: float = 1e-3, 
     max_iters: int = 100000,        
-) -> NestedSolution: # type: ignore
+) -> NSSolution: # type: ignore
     """
     Execute a Nested Sampling run. Unifies JAX-native and Host-native algorithms.
     """
@@ -173,6 +180,12 @@ def nested_sample(
         
         # Bypass the JAX loop entirely and yield to the host algorithm
         return sampler.run(log_likelihood_fn, prior_transform_fn, ndims, args)
+
+    elif isinstance(sampler, AbstractHostPhysicalNS):
+        if log_prior_fn is None or ndims is None:
+            raise ValueError(f"{sampler.__class__.__name__} requires `log_prior_fn` and `ndims`.")
+            
+        return sampler.run(log_likelihood_fn, log_prior_fn, ndims, args)
 
     # --- 2. JAX-NATIVE SAMPLERS (e.g., BlackJAX NSS) ---
     is_hypercube_run = False
@@ -227,20 +240,27 @@ def nested_sample(
 
     # --- 4. POST-PROCESSING (Auto-Transform Hypercube to Physical Space) ---
     if is_hypercube_run and prior_transform_fn is not None:
-        # We assume the first element of dead_info/buffer is the parameter PyTree.
-        # This maps the uniform u coordinates back to physical theta coordinates 
-        # using the user's prior transform function.
-        #
-        # Note: If `final_buffer` is a complex PyTree from the Aux return, 
-        # you may need to specifically index into the parameter leaf (e.g., final_buffer.particles) 
-        # before applying the vmap depending on how your specific sampler packages the dead point.
-        #
-        # For a standard BlackJAX NSS output where we intercept the particles:
-        # final_particles = jax.vmap(prior_transform_fn, in_axes=(0, None))(final_buffer.particles, args)
-        # final_buffer = eqx.tree_at(lambda x: x.particles, final_buffer, final_particles)
-        pass 
+        
+        @jax.jit
+        def _transform_buffer(buffer_to_transform: NSInfo, current_args: PyTree):
+            # 1. Vectorize the user's prior transform function over the 0th axis (max_iters).
+            #    in_axes=(0, None) means: batch over `u`, but pass `args` unchanged.
+            batched_transform = jax.vmap(prior_transform_fn, in_axes=(0, None))
+            
+            # 2. Apply the transform to the stacked [0, 1] hypercube particles.
+            physical_particles = batched_transform(buffer_to_transform.particles, current_args)
+            
+            # 3. Surgically replace the `particles` leaf in the NSInfo PyTree
+            return eqx.tree_at(
+                lambda b: b.particles, 
+                buffer_to_transform, 
+                physical_particles
+            )
 
-    return NestedSolution(
+        # Apply the transformation to the final accumulated buffer
+        final_buffer = _transform_buffer(final_buffer, args)
+
+    return NSSolution(
         dead_points=final_buffer, 
         logZ=final_state.logZ,
         logZ_err=final_state.logZ_err if hasattr(final_state, 'logZ_err') else jnp.nan,
