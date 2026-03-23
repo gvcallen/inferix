@@ -4,13 +4,15 @@ from typing import Any
 
 import equinox as eqx
 import jax
-from jaxtyping import PRNGKeyArray, PyTree
+from jaxtyping import PRNGKeyArray, PyTree, Scalar
 
 from inferix.custom_types import Y, Aux, SamplerState
 from inferix.result import Result, RESULTS
 from inferix.base import AbstractSampler
 
-class AbstractMCMCSampler(AbstractSampler[Y, Aux, SamplerState]):
+# from optimistix import AbstractIterativeSolver, BFGS
+
+class AbstractMCMCSampler(AbstractSampler[Y, Scalar, Aux, SamplerState]):
     """
     Abstract base class for all MCMC transition kernels.
     
@@ -43,7 +45,7 @@ class AbstractMCMCSampler(AbstractSampler[Y, Aux, SamplerState]):
 
 
 @eqx.filter_jit
-def mcmc_sample(
+def mcmc(
     log_prob_fn: Callable,
     sampler: AbstractMCMCSampler,
     y0: Y,

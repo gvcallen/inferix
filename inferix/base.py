@@ -19,7 +19,7 @@ class AbstractSampler(eqx.Module, Generic[Y, Out, Aux, SamplerState]):
         """Perform one step of the sampling."""
 
 
-class AbstractIterativeSampler(AbstractSampler):
+class AbstractIterativeSampler(AbstractSampler, Generic[Y, Out, Aux, SamplerState]):
     """Abstract base class for all iterative solvers."""
 
     @abc.abstractmethod

@@ -1,5 +1,6 @@
 from typing import Any, Callable, Dict, List, Optional
 
+import equinox as eqx
 import jax
 import jax.numpy as jnp
 import jax.flatten_util  # <-- Added this critical import
@@ -9,20 +10,50 @@ from jaxtyping import PyTree
 from inferix.nested import AbstractHostHypercubeNS
 from inferix.result import Result, RESULTS
 
+    # default_kwargs = {
+    #     'nDerived': 0,
+    #     'prior': default_prior,
+    #     'dumper': default_dumper,
+    #     'nlive': nDims*25,
+    #     'num_repeats': nDims*5,
+    #     'nprior': -1,
+    #     'nfail': -1,
+    #     'do_clustering': True,
+    #     'feedback': 1,
+    #     'precision_criterion': 0.001,
+    #     'logzero': -1e30,
+    #     'max_ndead': -1,
+    #     'boost_posterior': 0.0,
+    #     'posteriors': True,
+    #     'equals': True,
+    #     'cluster_posteriors': True,
+    #     'write_resume': True,
+    #     'write_paramnames': False,
+    #     'read_resume': True,
+    #     'write_stats': True,
+    #     'write_live': True,
+    #     'write_dead': True,
+    #     'write_prior': True,
+    #     'maximise': False,
+    #     'compression_factor': np.exp(-1),
+    #     'synchronous': True,
+    #     'base_dir': 'chains',
+    #     'file_root': 'test',
+    #     'cluster_dir': 'clusters',
+    #     'grade_dims': [nDims],
+    #     'nlives': {},
+    #     'seed': -1,
+    #     'cube_samples': None,
+    # }
+
 class PolyChord(AbstractHostHypercubeNS):
     """PolyChord Nested Sampling wrapper."""
-    
-    num_repeats: Optional[int] = None
-    grade_dims: Optional[List[int]] = None
-    grade_frac: Optional[List[float]] = None
-    nlives: Optional[Dict[float, int]] = None
-    cube_samples: Optional[Any] = None  
-    
+    num_repeats: int | None = None
     nprior: int = -1
     nfail: int = -1
     do_clustering: bool = True
     feedback: int = 1
-    precision_criterion: float = 0.001
+    precision_criterion: float = 1e-3
     logzero: float = -1e30
     max_ndead: int = -1
     boost_posterior: float = 0.0
@@ -41,57 +72,22 @@ class PolyChord(AbstractHostHypercubeNS):
     synchronous: bool = True
     base_dir: str = "chains"
     file_root: str = "test"
+    cluster_dir: str = "clusters"
     seed: int = -1
-
-    def __call__(self, log_likelihood_fn: Callable, prior_transform_fn: Callable, y0: PyTree, args: PyTree, *, nlive: int | None = None) -> Result:
+    nlives: Dict[float, int] = eqx.field(static=True, default_factory=dict)
+    cube_samples: Any | None = None  
+    
+    def __call__(self, log_likelihood_fn: Callable, prior_transform_fn: Callable, y0: PyTree, args: PyTree, **kwargs) -> Result:
         
         try:
             import pypolychord
-            from pypolychord.settings import PolyChordSettings
+            from anesthetic import NestedSamples
         except ImportError:
             raise ImportError("pypolychord must be installed to use this sampler.")
 
         # 1. DERIVE GEOMETRY FROM y0
         flat_y0, reconstruct_fn = jax.flatten_util.ravel_pytree(y0)
         ndims = flat_y0.size
-
-        _nlive = nlive if nlive is not None else ndims * 25
-        _num_repeats = self.num_repeats if self.num_repeats is not None else ndims * 5
-        _grade_dims = self.grade_dims if self.grade_dims is not None else [ndims]
-        _grade_frac = self.grade_frac if self.grade_frac is not None else [1.0] * len(_grade_dims)
-        _nlives = self.nlives if self.nlives is not None else {}
-
-        settings = PolyChordSettings(nDims=ndims, nDerived=0)
-        settings.nlive = _nlive
-        settings.num_repeats = _num_repeats
-        settings.nprior = self.nprior
-        settings.nfail = self.nfail
-        settings.do_clustering = self.do_clustering
-        settings.feedback = self.feedback
-        settings.precision_criterion = self.precision_criterion
-        settings.logzero = self.logzero
-        settings.max_ndead = self.max_ndead
-        settings.boost_posterior = self.boost_posterior
-        settings.posteriors = self.posteriors
-        settings.equals = self.equals
-        settings.cluster_posteriors = self.cluster_posteriors
-        settings.write_resume = self.write_resume
-        settings.write_paramnames = self.write_paramnames
-        settings.read_resume = self.read_resume
-        settings.write_stats = self.write_stats
-        settings.write_live = self.write_live
-        settings.write_dead = self.write_dead
-        settings.write_prior = self.write_prior
-        settings.maximise = self.maximise
-        settings.compression_factor = self.compression_factor
-        settings.synchronous = self.synchronous
-        settings.base_dir = self.base_dir
-        settings.file_root = self.file_root
-        settings.seed = self.seed
-        settings.grade_dims = _grade_dims
-        settings.grade_frac = _grade_frac
-        settings.nlives = _nlives
-        settings.cube_samples = self.cube_samples
 
         # 2. JIT-COMPILED BRIDGES
         @jax.jit
@@ -108,29 +104,73 @@ class PolyChord(AbstractHostHypercubeNS):
 
         def polychord_likelihood(theta_np):
             logL = jitted_likelihood(jnp.asarray(theta_np))
+            print(logL)
             return float(logL), []
 
         def polychord_prior(u_np):
             return np.array(jitted_prior(jnp.asarray(u_np)))
+        
+        _dummy_prior = polychord_prior(0.5*np.ones(ndims))
+        _dummy_logL = polychord_likelihood(_dummy_prior)
+        
+        # Combine kwargs
+        base_kwargs = {
+            'num_repeats': self.num_repeats if self.num_repeats is not None else ndims*5,
+            'nprior': self.nprior,
+            'nfail': self.nfail,
+            'do_clustering': self.do_clustering,
+            'feedback': self.feedback,
+            'precision_criterion': self.precision_criterion,
+            'logzero': self.logzero,
+            'max_ndead': self.max_ndead,
+            'boost_posterior': self.boost_posterior,
+            'posteriors': self.posteriors,
+            'equals': self.equals,
+            'cluster_posteriors': self.cluster_posteriors,
+            'write_resume': self.write_resume,
+            'write_paramnames': self.write_paramnames,
+            'read_resume': self.read_resume,
+            'write_stats': self.write_stats,
+            'write_live': self.write_live,
+            'write_dead': self.write_dead,
+            'write_prior': self.write_prior,
+            'maximise': self.maximise,
+            'compression_factor': self.compression_factor,
+            'synchronous': self.synchronous,
+            'base_dir': self.base_dir,
+            'file_root': self.file_root,
+            'cluster_dir': self.cluster_dir,
+            'seed': self.seed,
+            'nlives': self.nlives,
+            'cube_samples': self.cube_samples,
+        }
+        base_kwargs.update(kwargs)
 
         # 3. EXECUTE POLYCHORD
-        output = pypolychord.run_polychord(
+        param_names = [f'p{i}' for i in range(ndims)]
+        
+        nested_samples: NestedSamples = pypolychord.run(
             loglikelihood=polychord_likelihood,
             nDims=ndims,
             nDerived=0,
-            settings=settings,
-            prior=polychord_prior
+            prior=polychord_prior,
+            paramnames=list(zip(param_names, param_names)),
+            **base_kwargs,
         )
+        
+        loglikes = jnp.array(np.array(nested_samples['logL']))
+        samples = jnp.array(np.array(nested_samples.loc[:, param_names]))
 
         # 4. RESTRUCTURE RESULTS -> Returns a Batch of Caller PyTrees!
-        structured_samples = jax.vmap(reconstruct_fn)(jnp.array(output.samples))
+        structured_samples = jax.vmap(reconstruct_fn)(jnp.array(samples))
 
         return Result(
             samples=structured_samples, 
+            log_likelihoods=loglikes,
             final_state=None,
-            logZ=jnp.array(output.logZ),
-            logZ_err=jnp.array(output.logZerr),
+            log_evidence=None,
+            log_evidence_err=None,
             converged=jnp.array(True),
             result=RESULTS.successful,
-            stats={"num_steps": len(output.samples)}
+            stats={'output': nested_samples}
         )

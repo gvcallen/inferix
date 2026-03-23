@@ -16,7 +16,7 @@ from inferix.base import AbstractSampler, AbstractIterativeSampler
 # --- MCMC API ---
 from inferix.mcmc import (
     AbstractMCMCSampler,
-    mcmc_sample,
+    mcmc,
 )
 
 # --- Nested Sampling API ---
@@ -26,7 +26,7 @@ from inferix.nested import (
     AbstractHypercubeNS,
     AbstractNestedSampler,
     AbstractPhysicalNS,
-    nested_sample,
+    nested,
 )
 
 # --- Implementation ---
@@ -39,13 +39,13 @@ __all__ = [
     "Result",
     "RESULTS",
     "AbstractMCMCSampler",
-    "mcmc_sample",
+    "mcmc",
     "AbstractHostHypercubeNS",
     "AbstractHostPhysicalNS",
     "AbstractHypercubeNS",
     "AbstractNestedSampler",
     "AbstractPhysicalNS",
-    "nested_sample",
+    "nested",
 ]
 
 __all__.extend(samplers.__all__)

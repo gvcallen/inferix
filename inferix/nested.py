@@ -20,7 +20,7 @@ class NSInfo(eqx.Module):
     loglikelihood: Array       # L(theta)
     loglikelihood_birth: Array
 
-class AbstractNestedSampler(AbstractIterativeSampler):
+class AbstractNestedSampler(AbstractIterativeSampler[Y, Scalar, Aux, SamplerState]):
     """
     Abstract base class for all Nested Sampling algorithms.
     """
@@ -188,7 +188,7 @@ def _batched_loop(
     return final_buffer, current_state, total_steps, converged, status
 
 
-def nested_sample(
+def nested(
     log_likelihood_fn: Callable,
     key: PRNGKeyArray,
     args: PyTree = None,
@@ -295,8 +295,8 @@ def nested_sample(
     return Result(
         samples=final_buffer, 
         final_state=final_state,
-        logZ=final_state.logZ if hasattr(final_state, 'logZ') else None,
-        logZ_err=final_state.logZ_err if hasattr(final_state, 'logZ_err') else None,
+        log_evidence=final_state.logZ if hasattr(final_state, 'logZ') else None,
+        log_evidence_err=final_state.logZ_err if hasattr(final_state, 'logZ_err') else None,
         converged=converged,
         result=status,
         stats={"num_steps": final_steps}
