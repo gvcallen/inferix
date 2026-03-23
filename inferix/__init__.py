@@ -21,11 +21,11 @@ from inferix.mcmc import (
 
 # --- Nested Sampling API ---
 from inferix.nested import (
-    AbstractHostHypercubeNS,
-    AbstractHostPhysicalNS,
-    AbstractHypercubeNS,
+    AbstractHostHypercubeNestedSampler,
+    AbstractHostPhysicalNestedSampler,
+    AbstractHypercubeNestedSampler,
     AbstractNestedSampler,
-    AbstractPhysicalNS,
+    AbstractPhysicalNestedSampler,
     nested,
 )
 
@@ -40,11 +40,11 @@ __all__ = [
     "RESULTS",
     "AbstractMCMCSampler",
     "mcmc",
-    "AbstractHostHypercubeNS",
-    "AbstractHostPhysicalNS",
-    "AbstractHypercubeNS",
+    "AbstractHostHypercubeNestedSampler",
+    "AbstractHostPhysicalNestedSampler",
+    "AbstractHypercubeNestedSampler",
     "AbstractNestedSampler",
-    "AbstractPhysicalNS",
+    "AbstractPhysicalNestedSampler",
     "nested",
 ]
 

@@ -11,7 +11,7 @@ from inferix.custom_types import Y, Aux, SamplerState
 from inferix.result import Result
 from inferix.base import AbstractIterativeSampler, AbstractHostSampler
 
-class NSInfo(eqx.Module):
+class NestedSamplingInfo(eqx.Module):
     """
     Standardized Auxiliary output for a single Nested Sampling step.
     This guarantees the runner always knows where the physical parameters are.
@@ -49,8 +49,7 @@ class AbstractNestedSampler(AbstractIterativeSampler[Y, Scalar, Aux, SamplerStat
     ) -> tuple[Y, SamplerState, Aux]:
         """Perform one Nested Sampling iteration."""
 
-
-class AbstractPhysicalNS(AbstractNestedSampler[Y, SamplerState, Aux]):
+class AbstractPhysicalNestedSampler(AbstractNestedSampler[Y, SamplerState, Aux]):
     """
     Trait for Nested Samplers operating in the target physical parameter space (e.g., BlackJAX NSS).
     The runner will enforce that the user provides a `log_prior_fn`.
@@ -58,7 +57,7 @@ class AbstractPhysicalNS(AbstractNestedSampler[Y, SamplerState, Aux]):
     pass
 
 
-class AbstractHypercubeNS(AbstractNestedSampler[Y, SamplerState, Aux]):
+class AbstractHypercubeNestedSampler(AbstractNestedSampler[Y, SamplerState, Aux]):
     """
     Trait for Nested Samplers operating in the unit hypercube [0, 1]^d (e.g., PolyChord).
     The runner will enforce that the user provides a `prior_transform_fn`.
@@ -66,7 +65,7 @@ class AbstractHypercubeNS(AbstractNestedSampler[Y, SamplerState, Aux]):
     pass
 
 
-class AbstractHostHypercubeNS(AbstractHostSampler):
+class AbstractHostHypercubeNestedSampler(AbstractHostSampler):
     """
     Trait for Nested Samplers that natively explore the unit hypercube 
     but control their own host-side execution loop (e.g., PolyChord C++ binary).
@@ -76,7 +75,7 @@ class AbstractHostHypercubeNS(AbstractHostSampler):
         """Executes the host-driven algorithm and returns the standard solution."""
 
 
-class AbstractHostPhysicalNS(AbstractHostSampler):
+class AbstractHostPhysicalNestedSampler(AbstractHostSampler):
     """
     Trait for Nested Samplers that operate in the physical space
     but control their own host-side execution loop.
@@ -212,12 +211,12 @@ def nested(
         options = {}
 
     # --- 1. HOST-DRIVEN SAMPLERS ---
-    if isinstance(sampler, AbstractHostHypercubeNS):
+    if isinstance(sampler, AbstractHostHypercubeNestedSampler):
         if prior_transform_fn is None:
             raise ValueError(f"{sampler.__class__.__name__} requires `prior_transform_fn`.")
         return sampler(log_likelihood_fn, prior_transform_fn, y0, args, nlive=nlive)
 
-    elif isinstance(sampler, AbstractHostPhysicalNS):
+    elif isinstance(sampler, AbstractHostPhysicalNestedSampler):
         if log_prior_fn is None:
             raise ValueError(f"{sampler.__class__.__name__} requires `log_prior_fn`.")
         return sampler(log_likelihood_fn, log_prior_fn, y0, args, nlive=nlive)
@@ -238,7 +237,7 @@ def nested(
     is_hypercube_run = False
     
     # --- 3. JAX-NATIVE ROUTING ---
-    if isinstance(sampler, AbstractPhysicalNS):
+    if isinstance(sampler, AbstractPhysicalNestedSampler):
         if prior_transform_fn is not None:
             is_hypercube_run = True
             prior_func = _uniform_log_prior
@@ -259,7 +258,7 @@ def nested(
         else:
             raise ValueError("Physical samplers require either `log_prior_fn` or `prior_transform_fn`.")
 
-    elif isinstance(sampler, AbstractHypercubeNS):
+    elif isinstance(sampler, AbstractHypercubeNestedSampler):
         if prior_transform_fn is None:
             raise ValueError("Hypercube samplers require `prior_transform_fn`.")
         is_hypercube_run = True
@@ -281,7 +280,7 @@ def nested(
     if is_hypercube_run and prior_transform_fn is not None:
         
         @jax.jit
-        def _transform_buffer(buffer_to_transform: NSInfo, current_args: PyTree):
+        def _transform_buffer(buffer_to_transform: NestedSamplingInfo, current_args: PyTree):
             batched_transform = jax.vmap(prior_transform_fn, in_axes=(0, None))
             physical_particles = batched_transform(buffer_to_transform.particles, current_args)
             return eqx.tree_at(

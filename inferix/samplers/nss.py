@@ -5,12 +5,12 @@ import blackjax
 from jaxtyping import PRNGKeyArray, PyTree, Bool, Array
 
 from inferix.custom_types import Aux, SamplerState, Y
-from inferix.nested import AbstractPhysicalNS, NSInfo
+from inferix.nested import AbstractPhysicalNestedSampler, NestedSamplingInfo
 from inferix.result import RESULTS
 
 from optimistix import minimise
 
-class NSS(AbstractPhysicalNS[Y, SamplerState, NSInfo]): # <-- Note the explicit NSInfo type hint here
+class NSS(AbstractPhysicalNestedSampler[Y, SamplerState, NestedSamplingInfo]): # <-- Note the explicit NSInfo type hint here
     """
     Nested Slice Sampler (NSS) using the BlackJAX backend.
     """
@@ -43,7 +43,7 @@ class NSS(AbstractPhysicalNS[Y, SamplerState, NSInfo]): # <-- Note the explicit 
         key: PRNGKeyArray,
         options: dict[str, Any],
         state: SamplerState,
-    ) -> tuple[Y, SamplerState, NSInfo]: # <-- Explicit return type
+    ) -> tuple[Y, SamplerState, NestedSamplingInfo]: # <-- Explicit return type
         
         kernel = self._build_kernel(likelihood_fn, prior_fn, args)
         
@@ -52,7 +52,7 @@ class NSS(AbstractPhysicalNS[Y, SamplerState, NSInfo]): # <-- Note the explicit 
         
         # --- THE TRANSLATION LAYER ---
         # Repackage BlackJAX's specific outputs into our unified API contract
-        standardized_aux = NSInfo(
+        standardized_aux = NestedSamplingInfo(
             particles=blackjax_dead_info.particles,
             loglikelihood=blackjax_dead_info.loglikelihood,
             loglikelihood_birth=blackjax_dead_info.loglikelihood_birth

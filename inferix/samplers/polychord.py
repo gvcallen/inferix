@@ -7,7 +7,7 @@ import jax.flatten_util  # <-- Added this critical import
 import numpy as np
 from jaxtyping import PyTree
 
-from inferix.nested import AbstractHostHypercubeNS
+from inferix.nested import AbstractHostHypercubeNestedSampler
 from inferix.result import Result, RESULTS
 
     # default_kwargs = {
@@ -46,7 +46,7 @@ from inferix.result import Result, RESULTS
     #     'cube_samples': None,
     # }
 
-class PolyChord(AbstractHostHypercubeNS):
+class PolyChord(AbstractHostHypercubeNestedSampler):
     """PolyChord Nested Sampling wrapper."""
     num_repeats: int | None = None
     nprior: int = -1
@@ -104,7 +104,6 @@ class PolyChord(AbstractHostHypercubeNS):
 
         def polychord_likelihood(theta_np):
             logL = jitted_likelihood(jnp.asarray(theta_np))
-            print(logL)
             return float(logL), []
 
         def polychord_prior(u_np):
