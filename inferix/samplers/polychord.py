@@ -3,48 +3,21 @@ from typing import Any, Callable, Dict, List, Optional
 import equinox as eqx
 import jax
 import jax.numpy as jnp
-import jax.flatten_util  # <-- Added this critical import
+import jax.flatten_util
 import numpy as np
 from jaxtyping import PyTree
 
+MPI_AVAIABLE = False
+try:
+    from mpi4py import MPI
+    import pypolychord
+    from anesthetic import NestedSamples
+    MPI_AVAIABLE = True
+except ImportError:
+    pass
+
 from inferix.nested import AbstractHostHypercubeNestedSampler
 from inferix.result import Result, RESULTS
-
-    # default_kwargs = {
-    #     'nDerived': 0,
-    #     'prior': default_prior,
-    #     'dumper': default_dumper,
-    #     'nlive': nDims*25,
-    #     'num_repeats': nDims*5,
-    #     'nprior': -1,
-    #     'nfail': -1,
-    #     'do_clustering': True,
-    #     'feedback': 1,
-    #     'precision_criterion': 0.001,
-    #     'logzero': -1e30,
-    #     'max_ndead': -1,
-    #     'boost_posterior': 0.0,
-    #     'posteriors': True,
-    #     'equals': True,
-    #     'cluster_posteriors': True,
-    #     'write_resume': True,
-    #     'write_paramnames': False,
-    #     'read_resume': True,
-    #     'write_stats': True,
-    #     'write_live': True,
-    #     'write_dead': True,
-    #     'write_prior': True,
-    #     'maximise': False,
-    #     'compression_factor': np.exp(-1),
-    #     'synchronous': True,
-    #     'base_dir': 'chains',
-    #     'file_root': 'test',
-    #     'cluster_dir': 'clusters',
-    #     'grade_dims': [nDims],
-    #     'nlives': {},
-    #     'seed': -1,
-    #     'cube_samples': None,
-    # }
 
 class PolyChord(AbstractHostHypercubeNestedSampler):
     """PolyChord Nested Sampling wrapper."""
@@ -76,14 +49,11 @@ class PolyChord(AbstractHostHypercubeNestedSampler):
     seed: int = -1
     nlives: Dict[float, int] = eqx.field(static=True, default_factory=dict)
     cube_samples: Any | None = None  
+    paramnames: list[(str, str)] | None = None
     
     def __call__(self, log_likelihood_fn: Callable, prior_transform_fn: Callable, y0: PyTree, args: PyTree, **kwargs) -> Result:
-        
-        try:
-            import pypolychord
-            from anesthetic import NestedSamples
-        except ImportError:
-            raise ImportError("pypolychord must be installed to use this sampler.")
+        if not MPI_AVAIABLE:
+            raise ImportError("pypolychord, anesthetic and mpi4py must be installed to use the inferix PolyChord sampler.")
 
         # 1. DERIVE GEOMETRY FROM y0
         flat_y0, reconstruct_fn = jax.flatten_util.ravel_pytree(y0)
@@ -142,23 +112,26 @@ class PolyChord(AbstractHostHypercubeNestedSampler):
             'seed': self.seed,
             'nlives': self.nlives,
             'cube_samples': self.cube_samples,
+            'paramnames': self.paramnames,
         }
         base_kwargs.update(kwargs)
 
         # 3. EXECUTE POLYCHORD
-        param_names = [f'p{i}' for i in range(ndims)]
         
-        nested_samples: NestedSamples = pypolychord.run(
+        nested_samples = pypolychord.run(
             loglikelihood=polychord_likelihood,
             nDims=ndims,
             nDerived=0,
             prior=polychord_prior,
-            paramnames=list(zip(param_names, param_names)),
             **base_kwargs,
         )
         
+        exclude = ['logL', 'logL_birth', 'nlive', 'weight', 'logw']
+        param_cols = [col[0] for col in nested_samples.columns if col[0] not in exclude]
+        
         loglikes = jnp.array(np.array(nested_samples['logL']))
-        samples = jnp.array(np.array(nested_samples.loc[:, param_names]))
+        samples = jnp.array(np.array(nested_samples.loc[:, param_cols]))
+        weights = nested_samples.get_weights()
 
         # 4. RESTRUCTURE RESULTS -> Returns a Batch of Caller PyTrees!
         structured_samples = jax.vmap(reconstruct_fn)(jnp.array(samples))
@@ -171,5 +144,6 @@ class PolyChord(AbstractHostHypercubeNestedSampler):
             log_evidence_err=None,
             converged=jnp.array(True),
             result=RESULTS.successful,
+            weights=weights,
             stats={'output': nested_samples}
         )

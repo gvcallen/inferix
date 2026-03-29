@@ -202,6 +202,7 @@ def nested(
     nlive: int | None = None,
     max_steps: int | None = None,
     batch_size: int = 2000,
+    **kwargs,
 ) -> Result:
     
     if sampler is None:
@@ -214,12 +215,12 @@ def nested(
     if isinstance(sampler, AbstractHostHypercubeNestedSampler):
         if prior_transform_fn is None:
             raise ValueError(f"{sampler.__class__.__name__} requires `prior_transform_fn`.")
-        return sampler(log_likelihood_fn, prior_transform_fn, y0, args, nlive=nlive)
+        return sampler(log_likelihood_fn, prior_transform_fn, y0, args, nlive=nlive, **kwargs)
 
     elif isinstance(sampler, AbstractHostPhysicalNestedSampler):
         if log_prior_fn is None:
             raise ValueError(f"{sampler.__class__.__name__} requires `log_prior_fn`.")
-        return sampler(log_likelihood_fn, log_prior_fn, y0, args, nlive=nlive)
+        return sampler(log_likelihood_fn, log_prior_fn, y0, args, nlive=nlive, **kwargs)
 
     # --- 2. INITIALIZE LIVE POINTS ---
     if y_live is None:
