@@ -58,29 +58,6 @@ class PolyChord(AbstractHostHypercubeNestedSampler):
         # 1. DERIVE GEOMETRY FROM y0
         flat_y0, reconstruct_fn = jax.flatten_util.ravel_pytree(y0)
         ndims = flat_y0.size
-
-        # 2. JIT-COMPILED BRIDGES
-        @jax.jit
-        def jitted_likelihood(flat_theta_jax):
-            struct_theta = reconstruct_fn(flat_theta_jax)
-            return log_likelihood_fn(struct_theta, args)
-
-        @jax.jit
-        def jitted_prior(flat_u_jax):
-            struct_u = reconstruct_fn(flat_u_jax)
-            struct_theta = prior_transform_fn(struct_u, args)
-            flat_theta, _ = jax.flatten_util.ravel_pytree(struct_theta)
-            return flat_theta
-
-        def polychord_likelihood(theta_np):
-            logL = jitted_likelihood(jnp.asarray(theta_np))
-            return float(logL), []
-
-        def polychord_prior(u_np):
-            return np.array(jitted_prior(jnp.asarray(u_np)))
-        
-        _dummy_prior = polychord_prior(0.5*np.ones(ndims))
-        _dummy_logL = polychord_likelihood(_dummy_prior)
         
         # Combine kwargs
         base_kwargs = {
@@ -114,7 +91,35 @@ class PolyChord(AbstractHostHypercubeNestedSampler):
             'cube_samples': self.cube_samples,
             'paramnames': self.paramnames,
         }
-        base_kwargs.update(kwargs)
+        
+        unknown_kwargs = kwargs.keys() - base_kwargs.keys() - set(('nlive',))
+        if len(unknown_kwargs) != 0:
+            raise Exception(f"PolyChord sample got unknown kwargs: {unknown_kwargs}")
+        
+        base_kwargs.update(kwargs)        
+
+        # 2. JIT-COMPILED BRIDGES
+        @jax.jit
+        def jitted_likelihood(flat_theta_jax):
+            struct_theta = reconstruct_fn(flat_theta_jax)
+            return log_likelihood_fn(struct_theta, args)
+
+        @jax.jit
+        def jitted_prior(flat_u_jax):
+            struct_u = reconstruct_fn(flat_u_jax)
+            struct_theta = prior_transform_fn(struct_u, args)
+            flat_theta, _ = jax.flatten_util.ravel_pytree(struct_theta)
+            return flat_theta
+
+        def polychord_likelihood(theta_np):
+            logL = jitted_likelihood(jnp.asarray(theta_np))
+            return float(logL), []
+
+        def polychord_prior(u_np):
+            return np.array(jitted_prior(jnp.asarray(u_np)))
+        
+        _dummy_prior = polychord_prior(0.5*np.ones(ndims))
+        _dummy_logL = polychord_likelihood(_dummy_prior)
 
         # 3. EXECUTE POLYCHORD
         
