@@ -1,4 +1,4 @@
-# Inferix: A unified interface for probabilistic inference in JAX + Equinox
+Inferix: An (experimental) unified interface for probabilistic inference in JAX + Equinox
 
 | **Inferix** |  |
 |-------------|-------|
