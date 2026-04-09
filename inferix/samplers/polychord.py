@@ -131,13 +131,10 @@ class PolyChord(AbstractHostHypercubeNestedSampler):
             **base_kwargs,
         )
         
-        exclude = ['logL', 'logL_birth', 'nlive', 'weight', 'logw']
-        param_cols = [col[0] for col in nested_samples.columns if col[0] not in exclude]
-        
         loglikes = jnp.array(np.array(nested_samples['logL']))
-        samples = jnp.array(np.array(nested_samples.loc[:, param_cols]))
+        samples = jnp.array(np.array(nested_samples.iloc[:, :ndims]))
         weights = nested_samples.get_weights()
-
+        
         # 4. RESTRUCTURE RESULTS -> Returns a Batch of Caller PyTrees!
         structured_samples = jax.vmap(reconstruct_fn)(jnp.array(samples))
 
