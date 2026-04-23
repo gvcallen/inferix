@@ -10,8 +10,6 @@ from inferix.custom_types import Y, Aux, SamplerState
 from inferix.result import Result, RESULTS
 from inferix.base import AbstractSampler
 
-# from optimistix import AbstractIterativeSolver, BFGS
-
 class AbstractMCMCSampler(AbstractSampler[Y, Scalar, Aux, SamplerState]):
     """
     Abstract base class for all MCMC transition kernels.

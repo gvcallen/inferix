@@ -15,7 +15,7 @@ class AbstractSampler(eqx.Module, Generic[Y, Out, Aux, SamplerState]):
         """Perform all initial computation needed to initialise the sampler state."""
 
     @abc.abstractmethod
-    def step(self,) -> tuple[Y, SamplerState, Aux]:
+    def step(self) -> tuple[Y, SamplerState, Aux]:
         """Perform one step of the sampling."""
 
 
@@ -25,10 +25,3 @@ class AbstractIterativeSampler(AbstractSampler, Generic[Y, Out, Aux, SamplerStat
     @abc.abstractmethod
     def terminate(self, *args, **kwargs) -> tuple[Bool[Array, ""], RESULTS]:
         """Determine whether or not to stop the iterative sampling."""
-
-class AbstractHostSampler(eqx.Module):
-    """Abstract base class for all host-native solvers."""
-
-    @abc.abstractmethod
-    def __call__(self, *args, **kwargs) -> Result:
-        """ Run the full sampling and return the final result. """

@@ -10,7 +10,7 @@ from inferix.result import RESULTS
 
 from optimistix import minimise
 
-class NSS(AbstractPhysicalNestedSampler[Y, SamplerState, NestedSamplingInfo]): # <-- Note the explicit NSInfo type hint here
+class NSS(AbstractPhysicalNestedSampler[Y, SamplerState, NestedSamplingInfo]):
     """
     Nested Slice Sampler (NSS) using the BlackJAX backend.
     """

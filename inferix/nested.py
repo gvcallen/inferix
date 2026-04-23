@@ -9,7 +9,7 @@ from jaxtyping import Array, PRNGKeyArray, PyTree, Scalar
 
 from inferix.custom_types import Y, Aux, SamplerState
 from inferix.result import Result
-from inferix.base import AbstractIterativeSampler, AbstractHostSampler
+from inferix.base import AbstractIterativeSampler
 
 class NestedSamplingInfo(eqx.Module):
     """
@@ -63,26 +63,6 @@ class AbstractHypercubeNestedSampler(AbstractNestedSampler[Y, SamplerState, Aux]
     The runner will enforce that the user provides a `prior_transform_fn`.
     """
     pass
-
-
-class AbstractHostHypercubeNestedSampler(AbstractHostSampler):
-    """
-    Trait for Nested Samplers that natively explore the unit hypercube 
-    but control their own host-side execution loop (e.g., PolyChord C++ binary).
-    """
-    @abc.abstractmethod
-    def __call__(self, log_likelihood_fn: Callable, prior_transform_fn: Callable, y0: Y, args: PyTree, **kwargs) -> Result:
-        """Executes the host-driven algorithm and returns the standard solution."""
-
-
-class AbstractHostPhysicalNestedSampler(AbstractHostSampler):
-    """
-    Trait for Nested Samplers that operate in the physical space
-    but control their own host-side execution loop.
-    """
-    @abc.abstractmethod
-    def __call__(self, log_likelihood_fn: Callable, log_prior_fn: Callable, y0: Y, args: PyTree, **kwargs) -> Result:
-        """Executes the host-driven algorithm and returns the standard solution."""
 
 
 def _uniform_log_prior(u: PyTree, args: PyTree) -> Scalar:
@@ -211,18 +191,7 @@ def nested(
     if options is None:
         options = {}
 
-    # --- 1. HOST-DRIVEN SAMPLERS ---
-    if isinstance(sampler, AbstractHostHypercubeNestedSampler):
-        if prior_transform_fn is None:
-            raise ValueError(f"{sampler.__class__.__name__} requires `prior_transform_fn`.")
-        return sampler(log_likelihood_fn, prior_transform_fn, y0, args, nlive=nlive, **kwargs)
-
-    elif isinstance(sampler, AbstractHostPhysicalNestedSampler):
-        if log_prior_fn is None:
-            raise ValueError(f"{sampler.__class__.__name__} requires `log_prior_fn`.")
-        return sampler(log_likelihood_fn, log_prior_fn, y0, args, nlive=nlive, **kwargs)
-
-    # --- 2. INITIALIZE LIVE POINTS ---
+    # Initialize live points
     if y_live is None:
         if y0 is None or nlive is None:
             raise ValueError("Must provide either `y_live` OR both `y0` and `nlive`.")
@@ -237,7 +206,7 @@ def nested(
 
     is_hypercube_run = False
     
-    # --- 3. JAX-NATIVE ROUTING ---
+    # Jax-native routing
     if isinstance(sampler, AbstractPhysicalNestedSampler):
         if prior_transform_fn is not None:
             is_hypercube_run = True
@@ -272,12 +241,12 @@ def nested(
     else:
         raise TypeError("Sampler must inherit from a valid AbstractNestedSampler trait.")
 
-    # --- 4. EXECUTE BATCHED LOOP ---
+    # Execute batched loop
     final_buffer, final_state, final_steps, converged, status = _batched_loop(
         likelihood_func, prior_func, sampler, y_live, args, key, options, max_steps, batch_size
     )
 
-    # --- 5. POST-PROCESSING ---
+    # Post-processing
     if is_hypercube_run and prior_transform_fn is not None:
         
         @jax.jit
