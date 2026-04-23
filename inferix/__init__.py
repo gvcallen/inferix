@@ -21,8 +21,6 @@ from inferix.mcmc import (
 
 # --- Nested Sampling API ---
 from inferix.nested import (
-    AbstractHostHypercubeNestedSampler,
-    AbstractHostPhysicalNestedSampler,
     AbstractHypercubeNestedSampler,
     AbstractNestedSampler,
     AbstractPhysicalNestedSampler,
